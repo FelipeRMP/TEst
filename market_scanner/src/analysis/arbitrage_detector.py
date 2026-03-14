@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import math
 from itertools import combinations
 
-from analysis.consensus_model import ConsensusResult
-from config import settings
-from models import Event, Market, Opportunity, Outcome
+from src.analysis.consensus_model import ConsensusResult
+from src.config import settings
+from src.models import Event, Market, Opportunity, Outcome
 
 
 class OpportunityDetector:
@@ -19,7 +20,11 @@ class OpportunityDetector:
             opportunities.extend(self._find_arbitrage(event, consensus))
             opportunities.extend(self._find_positive_ev(event, consensus))
 
-        return sorted(opportunities, key=lambda item: (item.net_edge, item.expected_value), reverse=True)
+        return sorted(
+            opportunities,
+            key=lambda item: self._base_score(item, consensus_map.get(item.event_id)),
+            reverse=True,
+        )
 
     def _find_arbitrage(
         self,
@@ -50,7 +55,12 @@ class OpportunityDetector:
                 yes_market, no_market = no_market, yes_market
                 yes_outcome, no_outcome = no_outcome, yes_outcome
 
-            total_cost = yes_outcome.implied_probability + no_outcome.implied_probability + (2 * self.fee_rate)
+            yes_entry_price = self._entry_price(yes_outcome, "BUY")
+            no_entry_price = self._entry_price(no_outcome, "BUY")
+            if yes_entry_price is None or no_entry_price is None:
+                continue
+
+            total_cost = yes_entry_price + no_entry_price + (2 * self.fee_rate)
             if total_cost >= 1:
                 continue
 
@@ -63,12 +73,12 @@ class OpportunityDetector:
                     opportunity_type="cross_market_arbitrage",
                     platforms=[yes_market.platform, no_market.platform],
                     prices={
-                        f"{yes_market.platform}:{yes_market.market_id}:YES": yes_outcome.price or yes_outcome.implied_probability,
-                        f"{no_market.platform}:{no_market.market_id}:NO": no_outcome.price or no_outcome.implied_probability,
+                        f"{yes_market.platform}:{yes_market.market_id}:YES": yes_entry_price,
+                        f"{no_market.platform}:{no_market.market_id}:NO": no_entry_price,
                     },
                     implied_probabilities={
-                        f"{yes_market.platform}:{yes_market.market_id}:YES": yes_outcome.implied_probability,
-                        f"{no_market.platform}:{no_market.market_id}:NO": no_outcome.implied_probability,
+                        f"{yes_market.platform}:{yes_market.market_id}:YES": yes_entry_price,
+                        f"{no_market.platform}:{no_market.market_id}:NO": no_entry_price,
                     },
                     expected_value=net_edge,
                     net_edge=net_edge,
@@ -102,9 +112,17 @@ class OpportunityDetector:
                 if consensus_probability is None:
                     continue
 
-                expected_value = consensus_probability - outcome.implied_probability - self.fee_rate
+                entry_price = self._entry_price(outcome, "BUY")
+                if entry_price is None:
+                    continue
+
+                true_expected_value = self._true_expected_value(consensus_probability, entry_price)
+                expected_value = true_expected_value - self.fee_rate
                 if expected_value < self.min_ev:
                     continue
+
+                simple_edge = consensus_probability - entry_price
+                suspicious_ev = expected_value > 3.0
 
                 opportunities.append(
                     Opportunity(
@@ -112,17 +130,22 @@ class OpportunityDetector:
                         event_title=event.title,
                         opportunity_type="positive_ev",
                         platforms=[market.platform],
-                        prices={f"{market.platform}:{market.market_id}:{outcome_label}": outcome.price or outcome.implied_probability},
+                        prices={f"{market.platform}:{market.market_id}:{outcome_label}": entry_price},
                         implied_probabilities={
-                            f"{market.platform}:{market.market_id}:{outcome_label}": outcome.implied_probability
+                            f"{market.platform}:{market.market_id}:{outcome_label}": entry_price
                         },
                         expected_value=expected_value,
-                        net_edge=expected_value,
+                        net_edge=simple_edge,
                         max_executable_size=market.liquidity,
-                        risk=self._risk_payload(event, consensus, market.liquidity),
+                        risk=self._risk_payload(
+                            event,
+                            consensus,
+                            market.liquidity,
+                            suspicious_ev=suspicious_ev,
+                        ),
                         suggested_trade_strategy=(
                             f"Buy {outcome_label} on {market.platform} market {market.market_id}; "
-                            f"consensus fair probability is {consensus_probability:.3f} versus market {outcome.implied_probability:.3f}."
+                            f"consensus fair probability is {consensus_probability:.3f} versus executable ask {entry_price:.3f}."
                         ),
                     )
                 )
@@ -134,11 +157,13 @@ class OpportunityDetector:
         event: Event,
         consensus: ConsensusResult | None,
         executable_size: float,
+        suspicious_ev: bool = False,
     ) -> dict[str, float | str]:
         model_confidence = consensus.model_confidence if consensus else 0.0
+        consensus_variance = consensus.consensus_variance if consensus else 0.0
         liquidity_risk = 0.1 if executable_size >= 10_000 else 0.35 if executable_size >= 1_000 else 0.6
         resolution_risk = max(0.0, 1.0 - event.match_confidence)
-        overall_score = (liquidity_risk + resolution_risk + (1.0 - model_confidence)) / 3.0
+        overall_score = (liquidity_risk + resolution_risk + (1.0 - model_confidence) + consensus_variance) / 4.0
 
         if overall_score < 0.25:
             overall = "low"
@@ -154,4 +179,45 @@ class OpportunityDetector:
             "model_confidence": round(model_confidence, 4),
             "liquidity_risk": round(liquidity_risk, 4),
             "resolution_risk": round(resolution_risk, 4),
+            "consensus_variance": round(consensus_variance, 4),
+            "suspicious_ev": "true" if suspicious_ev else "false",
         }
+
+    @staticmethod
+    def _true_expected_value(consensus_probability: float, market_probability: float) -> float:
+        if market_probability <= 0:
+            return 0.0
+        p = consensus_probability
+        q = 1.0 - p
+        profit_if_win = 1.0 - market_probability
+        loss_if_lose = market_probability
+        return (p * profit_if_win) - (q * loss_if_lose)
+
+    @staticmethod
+    def _entry_price(outcome: Outcome, trade_side: str) -> float | None:
+        normalized_side = trade_side.strip().upper()
+        if normalized_side == "SELL":
+            candidate = outcome.best_bid if outcome.best_bid is not None else outcome.bid
+        else:
+            candidate = outcome.best_ask if outcome.best_ask is not None else outcome.ask
+
+        if candidate is not None and 0 < candidate < 1:
+            return candidate
+        if outcome.implied_probability is not None and 0 < outcome.implied_probability < 1:
+            return outcome.implied_probability
+        if outcome.price is not None and 0 < outcome.price < 1:
+            return outcome.price
+        return None
+
+    @staticmethod
+    def _base_score(opportunity: Opportunity, consensus: ConsensusResult | None) -> float:
+        liquidity = opportunity.max_executable_size or 0.0
+        confidence = consensus.model_confidence if consensus else 0.0
+        disagreement = consensus.market_disagreement_score if consensus else 0.0
+        effective_ev = min(opportunity.expected_value, 3.0)
+        return (
+            (effective_ev * 1.5)
+            + (math.log1p(max(liquidity, 0.0)) * 0.08)
+            + (confidence * 0.3)
+            - (disagreement * 0.2)
+        )

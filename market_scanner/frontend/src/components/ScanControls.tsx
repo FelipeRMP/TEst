@@ -19,8 +19,8 @@ export function ScanControls({
     <section className="panel controls-panel">
       <div className="controls-header">
         <div>
-          <h2>Scan Controls</h2>
-          <p>Run the scanner and refresh opportunities from the FastAPI backend.</p>
+          <h2>Run a Market Scan</h2>
+          <p>Refresh the dashboard with the latest prices and trading signals.</p>
         </div>
         <button className="primary-button" onClick={onScan} disabled={loading}>
           {loading ? "Scanning..." : "Run Scan"}
@@ -28,7 +28,7 @@ export function ScanControls({
       </div>
       <div className="controls-grid">
         <label>
-          <span>Market Limit</span>
+          <span>Markets To Check</span>
           <input
             type="number"
             min={1}
@@ -40,7 +40,7 @@ export function ScanControls({
           />
         </label>
         <label>
-          <span>Min Liquidity</span>
+          <span>Minimum Market Depth</span>
           <input
             type="number"
             min={0}
@@ -52,7 +52,7 @@ export function ScanControls({
           />
         </label>
         <label>
-          <span>Min EV</span>
+          <span>Minimum Profit Potential</span>
           <input
             type="number"
             min={0}
@@ -65,7 +65,7 @@ export function ScanControls({
         </label>
         <label>
           <span
-            title="This is used to estimate suggested position sizes with a conservative Kelly-based bankroll model."
+            title="This is used to estimate suggested position sizes with conservative bankroll management."
           >
             Total Bankroll
           </span>
@@ -80,7 +80,7 @@ export function ScanControls({
           />
         </label>
         <div className="status-chip">
-          <span className="status-label">Last Scan</span>
+          <span className="status-label">Last Update</span>
           <strong>{lastScanAt ? new Date(lastScanAt).toLocaleString() : "Not run yet"}</strong>
         </div>
       </div>

@@ -6,8 +6,8 @@ from typing import Any
 
 import httpx
 
-from config import settings
-from models import Market, Outcome
+from src.config import settings
+from src.models import Market, Outcome
 
 
 class KalshiClient:
@@ -81,13 +81,36 @@ class KalshiClient:
         if payload.get("mve_selected_legs") and len(payload.get("mve_selected_legs", [])) > 1:
             return None
 
-        title = str(payload.get("title") or payload.get("subtitle") or payload.get("ticker") or "Kalshi Market")
-        market_id = str(payload.get("ticker") or payload.get("id") or title)
+        base_title = str(payload.get("title") or payload.get("subtitle") or payload.get("ticker") or "Kalshi Market")
+        market_id = str(payload.get("ticker") or payload.get("id") or base_title)
+        yes_sub_title = str(payload.get("yes_sub_title") or "").strip()
+        no_sub_title = str(payload.get("no_sub_title") or "").strip()
+        title = self._normalized_contract_title(base_title, yes_sub_title, no_sub_title)
 
         yes_bid = self._to_float_or_none(payload.get("yes_bid_dollars") or payload.get("yes_bid"))
         yes_ask = self._to_float_or_none(payload.get("yes_ask_dollars") or payload.get("yes_ask"))
         no_bid = self._to_float_or_none(payload.get("no_bid_dollars") or payload.get("no_bid"))
         no_ask = self._to_float_or_none(payload.get("no_ask_dollars") or payload.get("no_ask"))
+        yes_bid_size = self._to_float_or_none(
+            payload.get("yes_bid_quantity")
+            or payload.get("yes_bid_size")
+            or payload.get("yes_bid_shares")
+        )
+        yes_ask_size = self._to_float_or_none(
+            payload.get("yes_ask_quantity")
+            or payload.get("yes_ask_size")
+            or payload.get("yes_ask_shares")
+        )
+        no_bid_size = self._to_float_or_none(
+            payload.get("no_bid_quantity")
+            or payload.get("no_bid_size")
+            or payload.get("no_bid_shares")
+        )
+        no_ask_size = self._to_float_or_none(
+            payload.get("no_ask_quantity")
+            or payload.get("no_ask_size")
+            or payload.get("no_ask_shares")
+        )
         last_price = self._to_float_or_none(
             payload.get("last_price_dollars")
             or payload.get("last_price")
@@ -113,7 +136,7 @@ class KalshiClient:
             market_id=market_id,
             event_key=str(payload.get("event_ticker") or payload.get("ticker") or market_id),
             event_title=title,
-            description=str(payload.get("subtitle") or "") or None,
+            description=str(payload.get("subtitle") or yes_sub_title or "") or None,
             category=self._category_from_ticker(str(payload.get("ticker") or "")),
             resolution_criteria=resolution_criteria,
             status="open" if str(payload.get("status", "")).lower() in {"active", "open"} else "inactive",
@@ -127,6 +150,10 @@ class KalshiClient:
                     label="YES",
                     price=yes_price,
                     implied_probability=yes_price,
+                    best_bid=yes_bid if yes_bid is not None else yes_price,
+                    best_ask=yes_ask if yes_ask is not None else yes_price,
+                    bid_size=yes_bid_size,
+                    ask_size=yes_ask_size,
                     bid=yes_bid,
                     ask=yes_ask,
                     spread_bps=yes_spread,
@@ -135,6 +162,10 @@ class KalshiClient:
                     label="NO",
                     price=no_price,
                     implied_probability=no_price,
+                    best_bid=no_bid if no_bid is not None else no_price,
+                    best_ask=no_ask if no_ask is not None else no_price,
+                    bid_size=no_bid_size,
+                    ask_size=no_ask_size,
                     bid=no_bid,
                     ask=no_ask,
                     spread_bps=no_spread,
@@ -142,6 +173,16 @@ class KalshiClient:
             ],
             metadata=payload,
         )
+
+    @staticmethod
+    def _normalized_contract_title(base_title: str, yes_sub_title: str, no_sub_title: str) -> str:
+        if yes_sub_title and yes_sub_title.lower() not in base_title.lower():
+            if base_title.lower().startswith("who will "):
+                return f"{base_title} ({yes_sub_title})"
+            return f"{base_title} - {yes_sub_title}"
+        if no_sub_title and no_sub_title.lower() not in base_title.lower() and not yes_sub_title:
+            return f"{base_title} - {no_sub_title}"
+        return base_title
 
     @staticmethod
     def _best_price(last_price: float | None, bid: float | None, ask: float | None) -> float | None:

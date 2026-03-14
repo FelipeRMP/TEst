@@ -48,6 +48,26 @@ button {
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.3);
 }
 
+.tab-strip {
+  display: flex;
+  gap: 12px;
+  margin: 0 0 20px;
+}
+
+.tab-button {
+  border: 1px solid rgba(138, 163, 194, 0.18);
+  border-radius: 999px;
+  padding: 10px 16px;
+  color: #dce8f5;
+  background: rgba(10, 18, 31, 0.88);
+}
+
+.tab-button-active {
+  color: #07101c;
+  background: linear-gradient(135deg, #7dd3fc, #61f6c1);
+  font-weight: 700;
+}
+
 .hero h1 {
   margin: 8px 0 12px;
   font-size: clamp(2rem, 4vw, 3.4rem);
@@ -233,6 +253,84 @@ select {
   overflow-x: auto;
 }
 
+.trade-ideas-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.trade-idea-card {
+  width: 100%;
+  padding: 20px;
+  border: 1px solid rgba(128, 152, 180, 0.18);
+  border-radius: 20px;
+  color: #e5edf6;
+  text-align: left;
+  background: rgba(10, 18, 31, 0.88);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.22);
+}
+
+.trade-idea-card:hover {
+  border-color: rgba(125, 211, 252, 0.32);
+  transform: translateY(-1px);
+}
+
+.trade-idea-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.trade-idea-header h3 {
+  margin: 6px 0 0;
+}
+
+.trade-idea-platform {
+  color: #7dd3fc;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.8rem;
+}
+
+.trade-idea-copy {
+  margin: 14px 0 12px;
+  color: #dce7f3;
+  font-size: 1rem;
+}
+
+.trade-idea-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: #9eb1c9;
+  font-size: 0.92rem;
+}
+
+.collection-layout {
+  display: grid;
+  gap: 20px;
+}
+
+.collection-summary-panel {
+  margin-bottom: 0;
+}
+
+.activity-list {
+  display: grid;
+  gap: 12px;
+}
+
+.activity-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(128, 152, 180, 0.18);
+  border-radius: 16px;
+  background: rgba(13, 21, 35, 0.9);
+  color: #dce7f3;
+}
+
 .opportunity-table {
   width: 100%;
   border-collapse: collapse;
@@ -277,6 +375,20 @@ select {
   font-weight: 700;
 }
 
+.movement-up {
+  color: #67f0b2;
+  font-weight: 700;
+}
+
+.movement-down {
+  color: #ff8a8a;
+  font-weight: 700;
+}
+
+.movement-flat {
+  color: #dce8f5;
+}
+
 .flags-cell {
   display: flex;
   gap: 8px;
@@ -301,6 +413,26 @@ select {
 .pill-risk {
   background: rgba(230, 170, 56, 0.18);
   color: #ffd98b;
+}
+
+.pill-warning {
+  background: rgba(246, 206, 84, 0.2);
+  color: #ffe39a;
+}
+
+.risk-low {
+  background: rgba(54, 180, 130, 0.2);
+  color: #8ff7c8;
+}
+
+.risk-medium {
+  background: rgba(246, 206, 84, 0.2);
+  color: #ffe39a;
+}
+
+.risk-high {
+  background: rgba(255, 120, 120, 0.16);
+  color: #ffb1b1;
 }
 
 .error-panel {
@@ -411,7 +543,12 @@ select {
 
   .controls-header,
   .panel-heading,
-  .modal-header {
+  .modal-header,
+  .trade-idea-header {
     flex-direction: column;
+  }
+
+  .activity-row {
+    grid-template-columns: 1fr;
   }
 }

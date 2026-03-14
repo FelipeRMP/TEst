@@ -3,8 +3,9 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .schemas import OpportunitiesResponse, ScanRequest, ScanResponse
+from .schemas import CollectionStatsResponse, OpportunitiesResponse, ScanRequest, ScanResponse
 from .services.scanner_service import ScannerService
+from ..utils.collection_stats import load_collection_stats
 
 app = FastAPI(title="Market Scanner API", version="0.1.0")
 
@@ -46,3 +47,8 @@ async def get_opportunities() -> OpportunitiesResponse:
         count=len(cached.opportunities),
         last_scan_at=cached.scanned_at,
     )
+
+
+@app.get("/collection-stats", response_model=CollectionStatsResponse)
+async def get_collection_stats() -> CollectionStatsResponse:
+    return CollectionStatsResponse(**load_collection_stats())

@@ -1,4 +1,4 @@
-import type { OpportunitiesResponse, ScanRequest, ScanResponse } from "./types";
+import type { CollectionStats, OpportunitiesResponse, ScanRequest, ScanResponse } from "./types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
@@ -27,4 +27,8 @@ export function runScan(payload: ScanRequest): Promise<ScanResponse> {
     method: "POST",
     body: JSON.stringify(payload)
   });
+}
+
+export function fetchCollectionStats(): Promise<CollectionStats> {
+  return requestJson<CollectionStats>("/collection-stats");
 }

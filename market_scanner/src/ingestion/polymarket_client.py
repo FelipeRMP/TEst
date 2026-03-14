@@ -6,8 +6,8 @@ from typing import Any
 
 import httpx
 
-from config import settings
-from models import Market, Outcome
+from src.config import settings
+from src.models import Market, Outcome
 
 
 class PolymarketClient:
@@ -111,23 +111,63 @@ class PolymarketClient:
     def _parse_outcomes(self, payload: dict[str, Any]) -> list[Outcome]:
         labels = self._coerce_list(payload.get("outcomes"))
         prices = self._coerce_list(payload.get("outcomePrices"))
+        bids = self._coerce_list(
+            payload.get("outcomeBids") or payload.get("bestBids") or payload.get("bids")
+        )
+        asks = self._coerce_list(
+            payload.get("outcomeAsks") or payload.get("bestAsks") or payload.get("asks")
+        )
+        bid_sizes = self._coerce_list(
+            payload.get("outcomeBidSizes") or payload.get("bestBidSizes") or payload.get("bidSizes")
+        )
+        ask_sizes = self._coerce_list(
+            payload.get("outcomeAskSizes") or payload.get("bestAskSizes") or payload.get("askSizes")
+        )
 
         parsed_outcomes: list[Outcome] = []
         for index, label in enumerate(labels):
             price = self._to_float_or_none(prices[index]) if index < len(prices) else None
+            best_bid = self._bounded_probability(self._to_float_or_none(bids[index]) if index < len(bids) else None)
+            best_ask = self._bounded_probability(self._to_float_or_none(asks[index]) if index < len(asks) else None)
+            bid_size = self._to_float_or_none(bid_sizes[index]) if index < len(bid_sizes) else None
+            ask_size = self._to_float_or_none(ask_sizes[index]) if index < len(ask_sizes) else None
             implied_probability = None
             if price is not None and 0 <= price <= 1:
                 implied_probability = price
+            execution_price = price if price is not None and 0 <= price <= 1 else implied_probability
+            if best_bid is None:
+                best_bid = execution_price
+            if best_ask is None:
+                best_ask = execution_price
 
             parsed_outcomes.append(
                 Outcome(
                     label=str(label),
                     price=price,
                     implied_probability=implied_probability,
+                    best_bid=best_bid,
+                    best_ask=best_ask,
+                    bid_size=bid_size,
+                    ask_size=ask_size,
+                    bid=best_bid,
+                    ask=best_ask,
+                    spread_bps=self._spread_bps(best_bid, best_ask),
                 )
             )
 
         return parsed_outcomes
+
+    @staticmethod
+    def _bounded_probability(value: float | None) -> float | None:
+        if value is None or not (0 <= value <= 1):
+            return None
+        return value
+
+    @staticmethod
+    def _spread_bps(bid: float | None, ask: float | None) -> float | None:
+        if bid is None or ask is None:
+            return None
+        return round(abs(ask - bid) * 10_000, 2)
 
     @staticmethod
     def _coerce_list(value: Any) -> list[Any]:

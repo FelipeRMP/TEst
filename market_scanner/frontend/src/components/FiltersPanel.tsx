@@ -10,8 +10,8 @@ export function FiltersPanel({ filters, platforms, onChange }: FiltersPanelProps
   return (
     <section className="panel filters-panel">
       <div className="panel-heading">
-        <h3>Filters</h3>
-        <p>Filter the currently loaded opportunities without rescanning.</p>
+        <h3>Refine Results</h3>
+        <p>Narrow the current list without running a new scan.</p>
       </div>
       <div className="filters-grid">
         <label>
@@ -31,7 +31,7 @@ export function FiltersPanel({ filters, platforms, onChange }: FiltersPanelProps
           </select>
         </label>
         <label>
-          <span>Min EV</span>
+          <span>Minimum Profit Potential</span>
           <input
             type="number"
             step="0.01"
@@ -43,7 +43,7 @@ export function FiltersPanel({ filters, platforms, onChange }: FiltersPanelProps
           />
         </label>
         <label>
-          <span>Min Liquidity</span>
+          <span>Minimum Market Depth</span>
           <input
             type="number"
             step="100"
@@ -58,7 +58,7 @@ export function FiltersPanel({ filters, platforms, onChange }: FiltersPanelProps
           />
         </label>
         <label className="checkbox-field">
-          <span>Arbitrage Only</span>
+          <span>Only Near Risk-Free Setups</span>
           <input
             type="checkbox"
             checked={filters.arbitrageOnly}

@@ -19,6 +19,12 @@ class OpportunityLegResponse(BaseModel):
     outcome: str
     price: float
     implied_probability: float
+    best_bid: float | None = None
+    best_ask: float | None = None
+    bid_size: float | None = None
+    ask_size: float | None = None
+    spread: float | None = None
+    spread_percent: float | None = None
     consensus_probability: float | None = None
     liquidity: float
     volume_24h: float
@@ -35,17 +41,32 @@ class OpportunityResponse(BaseModel):
     platform: str
     platforms: list[str]
     implied_probability: float
+    best_bid: float | None = None
+    best_ask: float | None = None
+    spread: float | None = None
+    spread_percent: float | None = None
     consensus_probability: float | None = None
     expected_value: float
     liquidity: float
     arbitrage_flag: bool
     confidence: float
+    related_signal_count: int = 1
     opportunity_type: str
     net_edge: float
     max_executable_size: float | None = None
     recommended_bankroll_fraction: float = 0.0
     recommended_position_size: float = 0.0
     risk_level: str = "high"
+    price_change_5m: float = 0.0
+    price_change_30m: float = 0.0
+    price_change_2h: float = 0.0
+    price_change_24h: float = 0.0
+    movement_signal: str = "stable"
+    movement_confidence: float = 0.0
+    volatility_5m: float = 0.0
+    volatility_30m: float = 0.0
+    volatility_2h: float = 0.0
+    consensus_variance: float = 0.0
     risk: dict[str, float | str]
     suggested_trade_strategy: str
     legs: list[OpportunityLegResponse]
@@ -62,3 +83,20 @@ class OpportunitiesResponse(BaseModel):
     opportunities: list[OpportunityResponse]
     count: int
     last_scan_at: datetime | None = None
+
+
+class RecentScanActivityResponse(BaseModel):
+    timestamp: datetime
+    signal_count: int
+    price_snapshot_count: int
+
+
+class CollectionStatsResponse(BaseModel):
+    total_signals_logged: int
+    total_price_snapshots_logged: int
+    latest_scan_timestamp: datetime | None = None
+    simulator_trade_count: float
+    simulated_realized_pnl: float
+    average_ev: float
+    win_rate: float | None = None
+    recent_scan_activity: list[RecentScanActivityResponse]

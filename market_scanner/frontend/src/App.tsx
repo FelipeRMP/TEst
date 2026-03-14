@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { fetchOpportunities, runScan } from "./api";
+import { fetchCollectionStats, fetchOpportunities, runScan } from "./api";
+import { DataCollectionPanel } from "./components/DataCollectionPanel";
 import { FiltersPanel } from "./components/FiltersPanel";
 import { MarketDetailModal } from "./components/MarketDetailModal";
 import { OpportunityCard } from "./components/OpportunityCard";
-import { OpportunityTable } from "./components/OpportunityTable";
 import { ScanControls } from "./components/ScanControls";
+import { TradeIdeaCard } from "./components/TradeIdeaCard";
 import type {
+  CollectionStats,
   FiltersState,
   Opportunity,
   OpportunitiesResponse,
-  ScanRequest,
-  SortKey
+  ScanRequest
 } from "./types";
 
 const defaultScanRequest: ScanRequest = {
@@ -27,23 +28,27 @@ const defaultFilters: FiltersState = {
   minLiquidity: 0
 };
 
+type TabKey = "trade-ideas" | "data-collection";
+
 function formatPercent(value: number) {
   return `${(value * 100).toFixed(1)}%`;
 }
 
 function App() {
+  const [activeTab, setActiveTab] = useState<TabKey>("trade-ideas");
   const [scanRequest, setScanRequest] = useState<ScanRequest>(defaultScanRequest);
   const [filters, setFilters] = useState<FiltersState>(defaultFilters);
-  const [sortKey, setSortKey] = useState<SortKey>("expected_value");
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [lastScanAt, setLastScanAt] = useState<string | null>(null);
+  const [collectionStats, setCollectionStats] = useState<CollectionStats | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingStats, setLoadingStats] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [statsError, setStatsError] = useState<string | null>(null);
   const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null);
 
   useEffect(() => {
-    void loadExisting();
+    void Promise.all([loadExisting(), loadCollectionStats()]);
   }, []);
 
   async function loadExisting() {
@@ -62,6 +67,21 @@ function App() {
     }
   }
 
+  async function loadCollectionStats() {
+    setLoadingStats(true);
+    setStatsError(null);
+    try {
+      const response = await fetchCollectionStats();
+      setCollectionStats(response);
+    } catch (caughtError) {
+      const message =
+        caughtError instanceof Error ? caughtError.message : "Failed to load collection stats.";
+      setStatsError(message);
+    } finally {
+      setLoadingStats(false);
+    }
+  }
+
   async function handleRunScan() {
     setLoading(true);
     setError(null);
@@ -69,6 +89,7 @@ function App() {
       const response = await runScan(scanRequest);
       setOpportunities(response.opportunities);
       setLastScanAt(response.scanned_at);
+      await loadCollectionStats();
     } catch (caughtError) {
       const message =
         caughtError instanceof Error ? caughtError.message : "Failed to run scan.";
@@ -78,21 +99,12 @@ function App() {
     }
   }
 
-  function handleSort(nextKey: SortKey) {
-    if (nextKey === sortKey) {
-      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
-      return;
-    }
-    setSortKey(nextKey);
-    setSortDirection("desc");
-  }
-
   const platformOptions = useMemo(() => {
     return Array.from(new Set(opportunities.flatMap((item) => item.platforms))).sort();
   }, [opportunities]);
 
   const filteredOpportunities = useMemo(() => {
-    const items = opportunities.filter((item) => {
+    return opportunities.filter((item) => {
       if (filters.platform && !item.platforms.includes(filters.platform)) {
         return false;
       }
@@ -107,25 +119,11 @@ function App() {
       }
       return true;
     });
-
-    return [...items].sort((left, right) => {
-      const leftValue = left[sortKey] ?? 0;
-      const rightValue = right[sortKey] ?? 0;
-
-      if (typeof leftValue === "string" && typeof rightValue === "string") {
-        const comparison = leftValue.localeCompare(rightValue);
-        return sortDirection === "asc" ? comparison : -comparison;
-      }
-
-      const numericLeft = typeof leftValue === "number" ? leftValue : 0;
-      const numericRight = typeof rightValue === "number" ? rightValue : 0;
-      return sortDirection === "asc" ? numericLeft - numericRight : numericRight - numericLeft;
-    });
-  }, [filters, opportunities, sortDirection, sortKey]);
+  }, [filters, opportunities]);
 
   const summary = useMemo(() => {
     const arbitrageCount = filteredOpportunities.filter((item) => item.arbitrage_flag).length;
-    const bestEv = filteredOpportunities[0]?.expected_value ?? 0;
+    const bestEv = Math.max(0, ...filteredOpportunities.map((item) => item.expected_value));
     const averageConfidence =
       filteredOpportunities.length > 0
         ? filteredOpportunities.reduce((sum, item) => sum + item.confidence, 0) /
@@ -147,79 +145,102 @@ function App() {
           <span className="eyebrow">Market Intelligence Dashboard</span>
           <h1>Market Scanner</h1>
           <p>
-            Run live scans, compare implied and consensus probabilities, and inspect
-            arbitrage or positive-EV opportunities from the existing Python backend.
+            Track simple trade ideas on one tab, and monitor signal logging plus paper-trading
+            research on the other.
           </p>
         </div>
       </header>
 
-      <ScanControls
-        value={scanRequest}
-        loading={loading}
-        onChange={setScanRequest}
-        onScan={handleRunScan}
-        lastScanAt={lastScanAt}
-      />
+      <div className="tab-strip">
+        <button
+          className={`tab-button ${activeTab === "trade-ideas" ? "tab-button-active" : ""}`}
+          onClick={() => setActiveTab("trade-ideas")}
+        >
+          Trade Ideas
+        </button>
+        <button
+          className={`tab-button ${activeTab === "data-collection" ? "tab-button-active" : ""}`}
+          onClick={() => setActiveTab("data-collection")}
+        >
+          Data Collection
+        </button>
+      </div>
 
-      <section className="metrics-row">
-        <OpportunityCard
-          title="Filtered Opportunities"
-          value={String(summary.total)}
-          helper="Rows matching the current filters"
+      {activeTab === "trade-ideas" ? (
+        <>
+          <ScanControls
+            value={scanRequest}
+            loading={loading}
+            onChange={setScanRequest}
+            onScan={handleRunScan}
+            lastScanAt={lastScanAt}
+          />
+
+          <section className="metrics-row">
+            <OpportunityCard
+              title="Visible Opportunities"
+              value={String(summary.total)}
+              helper="Simple trade ideas that match your current filters"
+            />
+            <OpportunityCard
+              title="Near Risk-Free Setups"
+              value={String(summary.arbitrageCount)}
+              helper="Possible buy-both-sides opportunities in the visible list"
+            />
+            <OpportunityCard
+              title="Best Profit Potential"
+              value={formatPercent(summary.bestEv)}
+              helper="The strongest estimated profit potential in the current view"
+            />
+            <OpportunityCard
+              title="Average Signal Strength"
+              value={formatPercent(summary.averageConfidence)}
+              helper="A quick trust score across the visible trade ideas"
+            />
+          </section>
+
+          <FiltersPanel filters={filters} platforms={platformOptions} onChange={setFilters} />
+
+          {error ? (
+            <section className="panel state-panel error-panel">
+              <h3>We couldn't load trade ideas</h3>
+              <p>{error}</p>
+            </section>
+          ) : null}
+
+          {!error && loading ? (
+            <section className="panel state-panel">
+              <h3>Scanning live markets</h3>
+              <p>The backend is gathering fresh prices and turning them into simple trade ideas.</p>
+            </section>
+          ) : null}
+
+          {!error && !loading && filteredOpportunities.length === 0 ? (
+            <section className="panel state-panel">
+              <h3>No trade ideas found yet</h3>
+              <p>Run a scan or loosen the filters to see more results.</p>
+            </section>
+          ) : null}
+
+          {!error && !loading && filteredOpportunities.length > 0 ? (
+            <section className="trade-ideas-grid">
+              {filteredOpportunities.map((opportunity) => (
+                <TradeIdeaCard
+                  key={opportunity.opportunity_id}
+                  opportunity={opportunity}
+                  onSelect={setSelectedOpportunity}
+                />
+              ))}
+            </section>
+          ) : null}
+        </>
+      ) : (
+        <DataCollectionPanel
+          stats={collectionStats}
+          loading={loadingStats}
+          error={statsError}
         />
-        <OpportunityCard
-          title="Arbitrage Flags"
-          value={String(summary.arbitrageCount)}
-          helper="Cross-market opportunities in the visible set"
-        />
-        <OpportunityCard
-          title="Best EV"
-          value={formatPercent(summary.bestEv)}
-          helper="Highest expected value after filtering"
-        />
-        <OpportunityCard
-          title="Average Confidence"
-          value={formatPercent(summary.averageConfidence)}
-          helper="Mean of match and model confidence"
-        />
-      </section>
-
-      <FiltersPanel
-        filters={filters}
-        platforms={platformOptions}
-        onChange={setFilters}
-      />
-
-      {error ? (
-        <section className="panel state-panel error-panel">
-          <h3>Something went wrong</h3>
-          <p>{error}</p>
-        </section>
-      ) : null}
-
-      {!error && loading ? (
-        <section className="panel state-panel">
-          <h3>Loading opportunities</h3>
-          <p>The backend is fetching live markets and recomputing scanner output.</p>
-        </section>
-      ) : null}
-
-      {!error && !loading && filteredOpportunities.length === 0 ? (
-        <section className="panel state-panel">
-          <h3>No opportunities yet</h3>
-          <p>Run a scan or relax the filters to populate the dashboard.</p>
-        </section>
-      ) : null}
-
-      {!error && !loading && filteredOpportunities.length > 0 ? (
-        <OpportunityTable
-          opportunities={filteredOpportunities}
-          sortKey={sortKey}
-          sortDirection={sortDirection}
-          onSort={handleSort}
-          onSelect={setSelectedOpportunity}
-        />
-      ) : null}
+      )}
 
       <MarketDetailModal
         opportunity={selectedOpportunity}

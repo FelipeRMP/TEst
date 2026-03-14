@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pydantic import BaseModel, Field
 
 
@@ -25,6 +27,14 @@ class Settings(BaseModel):
     fee_bps: int = Field(default=50, ge=0, le=10_000)
     match_threshold: float = Field(default=0.72, ge=0, le=1)
     embedding_similarity_enabled: bool = Field(default=False)
+    price_history_db_path: str = Field(
+        default=str(Path(__file__).resolve().parents[1] / "market_history.sqlite3")
+    )
+    price_history_cache_size: int = Field(default=1024, ge=128)
+    platform_reliability: dict[str, float] = Field(
+        default_factory=lambda: {"polymarket": 1.0, "kalshi": 1.1}
+    )
+    default_kelly_safety_factor: float = Field(default=0.25, ge=0, le=1)
 
 
 settings = Settings()

@@ -11,12 +11,14 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 LOCAL_DEPS = PROJECT_ROOT / ".deps"
 if LOCAL_DEPS.exists():
     sys.path.insert(0, str(LOCAL_DEPS))
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import httpx
 
-from config import settings
-from models import Opportunity
-from scanner import scan_markets
+from src.config import settings
+from src.models import Opportunity
+from src.scanner import scan_markets
 
 
 def build_parser() -> argparse.ArgumentParser:

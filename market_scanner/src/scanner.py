@@ -3,13 +3,16 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 
-from analysis.arbitrage_detector import OpportunityDetector
-from analysis.consensus_model import ConsensusModel, ConsensusResult
-from config import settings
-from ingestion.kalshi_client import KalshiClient
-from ingestion.polymarket_client import PolymarketClient
-from matching.event_matcher import EventMatcher
-from models import Event, Market, Opportunity
+from backend.utils.price_logger import log_market_price
+from src.analysis.arbitrage_detector import OpportunityDetector
+from src.analysis.consensus_model import ConsensusModel, ConsensusResult
+from src.analysis.movement_detector import MovementDetector, MovementMetrics
+from src.config import settings
+from src.ingestion.kalshi_client import KalshiClient
+from src.ingestion.polymarket_client import PolymarketClient
+from src.matching.event_matcher import EventMatcher
+from src.models import Event, Market, Opportunity
+from src.storage.price_history_store import price_history_store
 
 
 @dataclass(slots=True)
@@ -18,6 +21,7 @@ class ScanSnapshot:
     events: list[Event]
     consensus_map: dict[str, ConsensusResult]
     opportunities: list[Opportunity]
+    movement_map: dict[tuple[str, str, str], MovementMetrics]
 
 
 async def scan_markets(
@@ -40,14 +44,18 @@ async def scan_markets(
 
     filtered_markets = [
         market
-        for market in markets
-        if market.status == "open" and market.liquidity >= min_liquidity and market.outcomes
+        for market in (_sanitize_market(market) for market in markets)
+        if market is not None and market.status == "open" and market.liquidity >= min_liquidity and market.outcomes
     ]
+    await asyncio.gather(*(log_market_price(market) for market in filtered_markets), return_exceptions=True)
 
     matcher = EventMatcher()
     events = matcher.group_markets(filtered_markets)
     consensus_model = ConsensusModel()
     consensus_map = consensus_model.compute(events)
+    await price_history_store.record_event_prices(events)
+    movement_detector = MovementDetector()
+    movement_map = await movement_detector.analyze(events)
 
     detector = OpportunityDetector(min_ev=min_ev)
     opportunities = detector.find(events, consensus_map)
@@ -57,4 +65,49 @@ async def scan_markets(
         events=events,
         consensus_map=consensus_map,
         opportunities=opportunities,
+        movement_map=movement_map,
     )
+
+
+def _sanitize_market(market: Market) -> Market | None:
+    sanitized_outcomes = []
+    for outcome in market.outcomes:
+        probability = outcome.implied_probability
+        if probability is None and outcome.price is not None and 0.0 <= outcome.price <= 1.0:
+            probability = outcome.price
+        if probability is None:
+            continue
+        if not 0.0 <= probability <= 1.0:
+            continue
+
+        price = outcome.price
+        if price is None or not 0.0 <= price <= 1.0:
+            price = probability
+        best_bid = outcome.best_bid if outcome.best_bid is not None and 0.0 <= outcome.best_bid <= 1.0 else None
+        best_ask = outcome.best_ask if outcome.best_ask is not None and 0.0 <= outcome.best_ask <= 1.0 else None
+        if best_bid is None and outcome.bid is not None and 0.0 <= outcome.bid <= 1.0:
+            best_bid = outcome.bid
+        if best_ask is None and outcome.ask is not None and 0.0 <= outcome.ask <= 1.0:
+            best_ask = outcome.ask
+        if best_bid is None:
+            best_bid = probability
+        if best_ask is None:
+            best_ask = probability
+
+        sanitized_outcomes.append(
+            outcome.model_copy(
+                update={
+                    "price": round(price, 6),
+                    "implied_probability": round(probability, 6),
+                    "best_bid": round(best_bid, 6),
+                    "best_ask": round(best_ask, 6),
+                    "bid": round(best_bid, 6),
+                    "ask": round(best_ask, 6),
+                }
+            )
+        )
+
+    if not sanitized_outcomes:
+        return None
+
+    return market.model_copy(update={"outcomes": sanitized_outcomes})

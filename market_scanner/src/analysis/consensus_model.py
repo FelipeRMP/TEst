@@ -5,7 +5,8 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from models import Event
+from src.config import settings
+from src.models import Event
 
 
 @dataclass(slots=True)
@@ -14,6 +15,8 @@ class ConsensusResult:
     probabilities: dict[str, float]
     model_confidence: float
     dispersion: float
+    consensus_variance: float
+    market_disagreement_score: float
 
 
 class ConsensusModel:
@@ -31,6 +34,7 @@ class ConsensusModel:
                             "probability": outcome.implied_probability,
                             "liquidity": market.liquidity,
                             "market_id": market.market_id,
+                            "platform": market.platform,
                         }
                     )
 
@@ -43,27 +47,54 @@ class ConsensusModel:
         for event_id, event_frame in df.groupby("event_id"):
             probabilities: dict[str, float] = {}
             outcome_dispersion: list[float] = []
+            outcome_variances: list[float] = []
 
             for outcome_label, outcome_frame in event_frame.groupby("outcome"):
-                weights = outcome_frame["liquidity"].fillna(0).map(lambda value: math.log1p(max(float(value), 1.0)))
+                weights = outcome_frame.apply(
+                    lambda row: math.log1p(max(float(row["liquidity"]), 1.0))
+                    * settings.platform_reliability.get(str(row["platform"]), 1.0),
+                    axis=1,
+                )
                 weighted_probability = (outcome_frame["probability"] * weights).sum() / weights.sum()
                 probabilities[outcome_label] = float(weighted_probability)
-                outcome_dispersion.append(float(outcome_frame["probability"].std(ddof=0) or 0.0))
+                variance = float(outcome_frame["probability"].var(ddof=0) or 0.0)
+                outcome_variances.append(variance)
+                outcome_dispersion.append(float(math.sqrt(variance)))
 
             source_count = int(event_frame["market_id"].nunique())
             effective_liquidity = float(event_frame["liquidity"].sum())
             average_dispersion = sum(outcome_dispersion) / len(outcome_dispersion) if outcome_dispersion else 0.0
-            confidence = min(
-                1.0,
-                0.15 * source_count + (math.log1p(max(effective_liquidity, 1.0)) / 10.0) - average_dispersion,
+            consensus_variance = sum(outcome_variances) / len(outcome_variances) if outcome_variances else 0.0
+            disagreement_score = min(1.0, average_dispersion * 4.0)
+            confidence = self._confidence_score(
+                source_count=source_count,
+                effective_liquidity=effective_liquidity,
+                average_dispersion=average_dispersion,
+                consensus_variance=consensus_variance,
             )
-            confidence = max(0.0, confidence)
 
             results[event_id] = ConsensusResult(
                 event_id=event_id,
                 probabilities=probabilities,
                 model_confidence=confidence,
                 dispersion=average_dispersion,
+                consensus_variance=consensus_variance,
+                market_disagreement_score=disagreement_score,
             )
 
         return results
+
+    @staticmethod
+    def _confidence_score(
+        source_count: int,
+        effective_liquidity: float,
+        average_dispersion: float,
+        consensus_variance: float,
+    ) -> float:
+        source_signal = min(0.28, math.log1p(max(source_count, 0)) * 0.14)
+        liquidity_signal = min(0.36, math.log1p(max(effective_liquidity, 1.0)) / 24.0)
+        dispersion_penalty = min(0.55, average_dispersion * 2.6)
+        variance_penalty = min(0.3, consensus_variance * 8.0)
+        base_confidence = 0.18 + source_signal + liquidity_signal - dispersion_penalty - variance_penalty
+        # Keep confidence calibrated below certainty; exact 1.0 should be effectively unreachable.
+        return round(max(0.02, min(0.98, base_confidence)), 4)
