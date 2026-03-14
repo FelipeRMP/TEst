@@ -338,7 +338,7 @@ Manual install commands:
 sudo cp deploy/market-scanner.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable market-scanner
-sudo systemctl start market-scanner
+sudo systemctl restart market-scanner
 sudo systemctl status market-scanner
 journalctl -u market-scanner -f
 ```
@@ -350,6 +350,25 @@ The service uses the project virtualenv Python at:
 ```
 
 If you need different paths or environment values, edit the unit file before enabling it.
+
+### Troubleshooting
+
+If the service fails to start, first confirm that both the worker path and virtualenv path match the deployed project root:
+
+```bash
+/home/scanner/TEst/market_scanner
+```
+
+Useful commands:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable market-scanner
+sudo systemctl restart market-scanner
+sudo systemctl status market-scanner
+sudo journalctl -u market-scanner -n 50 --no-pager
+sudo journalctl -u market-scanner -f
+```
 
 ## Movement Signals
 

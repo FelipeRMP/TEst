@@ -6,14 +6,17 @@ After=network.target
 Type=simple
 User=scanner
 WorkingDirectory=/home/scanner/TEst/market_scanner
+Environment=PYTHONUNBUFFERED=1
 Environment=SCAN_INTERVAL_SECONDS=60
 Environment=SCAN_LIMIT=300
 Environment=MIN_LIQUIDITY=0
 Environment=MIN_EV=0.01
 Environment=BANKROLL_AMOUNT=1000
-ExecStart=/home/scanner/TEst/market_scanner/.venv/bin/python backend/workers/scan_worker.py
+ExecStart=/home/scanner/TEst/market_scanner/.venv/bin/python /home/scanner/TEst/market_scanner/backend/workers/scan_worker.py
 Restart=always
 RestartSec=10
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
