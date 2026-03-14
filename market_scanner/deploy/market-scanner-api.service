@@ -1,0 +1,17 @@
+[Unit]
+Description=Market Scanner API
+After=network.target
+
+[Service]
+Type=simple
+User=scanner
+WorkingDirectory=/home/scanner/TEst/market_scanner
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/scanner/TEst/market_scanner/.venv/bin/python -m uvicorn backend.app.api:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

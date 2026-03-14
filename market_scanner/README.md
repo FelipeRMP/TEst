@@ -327,20 +327,43 @@ For Ubuntu on Azure, you can run the worker as a `systemd` service so it starts 
 Service template:
 
 - [market-scanner.service](C:/Users/redfy/Desktop/codex_root/market_scanner/deploy/market-scanner.service)
+- [market-scanner-api.service](C:/Users/redfy/Desktop/codex_root/market_scanner/deploy/market-scanner-api.service)
+- [market-scanner-frontend.service](C:/Users/redfy/Desktop/codex_root/market_scanner/deploy/market-scanner-frontend.service)
 
-Optional helper:
+Helpers:
 
 - [install_service.sh](C:/Users/redfy/Desktop/codex_root/market_scanner/deploy/install_service.sh)
+- [build_frontend.sh](C:/Users/redfy/Desktop/codex_root/market_scanner/deploy/build_frontend.sh)
 
-Manual install commands:
+Headless deployment steps for the VM at `/home/scanner/TEst/market_scanner`:
+
+1. Build the frontend once:
 
 ```bash
+cd /home/scanner/TEst/market_scanner
+bash deploy/build_frontend.sh
+```
+
+2. Install and enable all three services:
+
+```bash
+cd /home/scanner/TEst/market_scanner
 sudo cp deploy/market-scanner.service /etc/systemd/system/
+sudo cp deploy/market-scanner-api.service /etc/systemd/system/
+sudo cp deploy/market-scanner-frontend.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable market-scanner
+sudo systemctl enable market-scanner-api
+sudo systemctl enable market-scanner-frontend
 sudo systemctl restart market-scanner
+sudo systemctl restart market-scanner-api
+sudo systemctl restart market-scanner-frontend
 sudo systemctl status market-scanner
-journalctl -u market-scanner -f
+sudo systemctl status market-scanner-api
+sudo systemctl status market-scanner-frontend
+sudo journalctl -u market-scanner -f
+sudo journalctl -u market-scanner-api -f
+sudo journalctl -u market-scanner-frontend -f
 ```
 
 The service uses the project virtualenv Python at:
@@ -350,6 +373,14 @@ The service uses the project virtualenv Python at:
 ```
 
 If you need different paths or environment values, edit the unit file before enabling it.
+
+Azure inbound ports that must be open:
+
+- `22` for SSH
+- `8000` for the FastAPI API
+- `5173` for the static frontend
+
+The frontend is served from `frontend/dist` via a lightweight Python static server, so no `npm run dev` terminal needs to stay open on your PC.
 
 ### Troubleshooting
 
@@ -364,10 +395,20 @@ Useful commands:
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable market-scanner
+sudo systemctl enable market-scanner-api
+sudo systemctl enable market-scanner-frontend
 sudo systemctl restart market-scanner
+sudo systemctl restart market-scanner-api
+sudo systemctl restart market-scanner-frontend
 sudo systemctl status market-scanner
+sudo systemctl status market-scanner-api
+sudo systemctl status market-scanner-frontend
 sudo journalctl -u market-scanner -n 50 --no-pager
+sudo journalctl -u market-scanner-api -n 50 --no-pager
+sudo journalctl -u market-scanner-frontend -n 50 --no-pager
 sudo journalctl -u market-scanner -f
+sudo journalctl -u market-scanner-api -f
+sudo journalctl -u market-scanner-frontend -f
 ```
 
 ## Movement Signals

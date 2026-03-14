@@ -1,0 +1,16 @@
+[Unit]
+Description=Market Scanner Frontend
+After=network.target
+
+[Service]
+Type=simple
+User=scanner
+WorkingDirectory=/home/scanner/TEst/market_scanner/frontend/dist
+ExecStart=/usr/bin/python3 -m http.server 5173 --bind 0.0.0.0
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
