@@ -244,6 +244,11 @@ select {
   font-size: 1.6rem;
 }
 
+.metric-value-small {
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
 .metric-helper {
   color: #97abc3;
   font-size: 0.9rem;
@@ -432,6 +437,18 @@ select {
 
 .risk-high {
   background: rgba(255, 120, 120, 0.16);
+  color: #ffb1b1;
+}
+
+.freshness-healthy {
+  color: #8ff7c8;
+}
+
+.freshness-delayed {
+  color: #ffe39a;
+}
+
+.freshness-stale {
   color: #ffb1b1;
 }
 

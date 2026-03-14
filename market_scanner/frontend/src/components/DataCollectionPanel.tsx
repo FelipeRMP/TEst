@@ -24,6 +24,13 @@ function formatCurrency(value: number | null | undefined) {
   }).format(value);
 }
 
+function formatDateTime(value: string | null | undefined) {
+  if (!value) {
+    return "N/A";
+  }
+  return new Date(value).toLocaleString();
+}
+
 export function DataCollectionPanel({ stats, loading, error }: DataCollectionPanelProps) {
   if (error) {
     return (
@@ -66,40 +73,68 @@ export function DataCollectionPanel({ stats, loading, error }: DataCollectionPan
           <span className="metric-helper">Order-price observations captured during scans</span>
         </div>
         <div className="metric-card">
+          <span className="metric-label">Latest Signal Time</span>
+          <strong className="metric-value metric-value-small">
+            {formatDateTime(stats.latest_signal_timestamp)}
+          </strong>
+          <span className="metric-helper">Most recent signal row written by the scanner</span>
+        </div>
+        <div className="metric-card">
           <span className="metric-label">Simulator Trades</span>
           <strong className="metric-value">{stats.simulator_trade_count}</strong>
           <span className="metric-helper">Paper trades built from the logged signals</span>
         </div>
         <div className="metric-card">
-          <span className="metric-label">Realized PnL</span>
-          <strong className="metric-value">{formatCurrency(stats.simulated_realized_pnl)}</strong>
+          <span className="metric-label">Simulated PnL</span>
+          <strong className="metric-value">{formatCurrency(stats.simulator_total_pnl)}</strong>
           <span className="metric-helper">Simulator profit after applying the current exit rules</span>
+        </div>
+        <div className="metric-card">
+          <span className="metric-label">Win Rate</span>
+          <strong className="metric-value">{formatPercent(stats.simulator_win_rate)}</strong>
+          <span className="metric-helper">Share of simulator trades with positive realized pnl</span>
+        </div>
+        <div className="metric-card">
+          <span className="metric-label">Average EV</span>
+          <strong className="metric-value">{formatPercent(stats.average_expected_value)}</strong>
+          <span className="metric-helper">Average logged expected value across all saved signals</span>
+        </div>
+        <div className="metric-card">
+          <span className="metric-label">Signals in Last 24h</span>
+          <strong className="metric-value">{stats.recent_signal_count_24h}</strong>
+          <span className="metric-helper">Recent signal activity for monitoring collection health</span>
         </div>
       </section>
 
       <section className="panel collection-summary-panel">
         <div className="panel-heading">
           <div>
-            <h3>Research Summary</h3>
-            <p>This tab helps you monitor data collection quality and paper-trading performance.</p>
+            <h3>System Status</h3>
+            <p>This tab tracks worker freshness and whether the collection pipeline looks healthy.</p>
           </div>
         </div>
         <div className="modal-grid">
           <div className="detail-block">
-            <span>Latest Scan Timestamp</span>
-            <strong>
-              {stats.latest_scan_timestamp
-                ? new Date(stats.latest_scan_timestamp).toLocaleString()
-                : "No scans yet"}
+            <span>Worker Expected Interval</span>
+            <strong>{stats.expected_scan_interval_seconds}s</strong>
+          </div>
+          <div className="detail-block">
+            <span>Last Observed Scan</span>
+            <strong>{formatDateTime(stats.latest_scan_timestamp)}</strong>
+          </div>
+          <div className="detail-block">
+            <span>Latest Price Time</span>
+            <strong>{formatDateTime(stats.latest_price_timestamp)}</strong>
+          </div>
+          <div className="detail-block">
+            <span>Data Freshness</span>
+            <strong className={`freshness-${stats.data_freshness_status}`}>
+              {stats.data_freshness_status}
             </strong>
           </div>
           <div className="detail-block">
-            <span>Average EV</span>
-            <strong>{formatPercent(stats.average_ev)}</strong>
-          </div>
-          <div className="detail-block">
-            <span>Win Rate</span>
-            <strong>{formatPercent(stats.win_rate)}</strong>
+            <span>Price Snapshots in Last 24h</span>
+            <strong>{stats.recent_price_snapshot_count_24h}</strong>
           </div>
         </div>
       </section>

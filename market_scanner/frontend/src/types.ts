@@ -80,10 +80,19 @@ export type RecentScanActivity = {
 export type CollectionStats = {
   total_signals_logged: number;
   total_price_snapshots_logged: number;
+  latest_signal_timestamp: string | null;
+  latest_price_timestamp: string | null;
   latest_scan_timestamp: string | null;
   simulator_trade_count: number;
+  simulator_total_pnl: number;
   simulated_realized_pnl: number;
+  simulator_win_rate: number | null;
+  average_expected_value: number;
   average_ev: number;
+  recent_signal_count_24h: number;
+  recent_price_snapshot_count_24h: number;
+  expected_scan_interval_seconds: number;
+  data_freshness_status: string;
   win_rate: number | null;
   recent_scan_activity: RecentScanActivity[];
 };

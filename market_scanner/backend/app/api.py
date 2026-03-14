@@ -52,3 +52,8 @@ async def get_opportunities() -> OpportunitiesResponse:
 @app.get("/collection-stats", response_model=CollectionStatsResponse)
 async def get_collection_stats() -> CollectionStatsResponse:
     return CollectionStatsResponse(**load_collection_stats())
+
+
+@app.get("/data-collection/stats", response_model=CollectionStatsResponse)
+async def get_data_collection_stats() -> CollectionStatsResponse:
+    return CollectionStatsResponse(**load_collection_stats())

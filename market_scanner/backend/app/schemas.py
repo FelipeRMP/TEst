@@ -94,9 +94,18 @@ class RecentScanActivityResponse(BaseModel):
 class CollectionStatsResponse(BaseModel):
     total_signals_logged: int
     total_price_snapshots_logged: int
+    latest_signal_timestamp: datetime | None = None
+    latest_price_timestamp: datetime | None = None
     latest_scan_timestamp: datetime | None = None
-    simulator_trade_count: float
+    simulator_trade_count: int
+    simulator_total_pnl: float
     simulated_realized_pnl: float
+    simulator_win_rate: float | None = None
+    average_expected_value: float
     average_ev: float
+    recent_signal_count_24h: int
+    recent_price_snapshot_count_24h: int
+    expected_scan_interval_seconds: int
+    data_freshness_status: str
     win_rate: float | None = None
     recent_scan_activity: list[RecentScanActivityResponse]

@@ -30,5 +30,5 @@ export function runScan(payload: ScanRequest): Promise<ScanResponse> {
 }
 
 export function fetchCollectionStats(): Promise<CollectionStats> {
-  return requestJson<CollectionStats>("/collection-stats");
+  return requestJson<CollectionStats>("/data-collection/stats");
 }

@@ -320,6 +320,37 @@ The worker:
 
 For a simple server deployment, keep the worker running under a process manager or a long-lived terminal session.
 
+## Linux System Service
+
+For Ubuntu on Azure, you can run the worker as a `systemd` service so it starts on boot and restarts automatically after failures.
+
+Service template:
+
+- [market-scanner.service](C:/Users/redfy/Desktop/codex_root/market_scanner/deploy/market-scanner.service)
+
+Optional helper:
+
+- [install_service.sh](C:/Users/redfy/Desktop/codex_root/market_scanner/deploy/install_service.sh)
+
+Manual install commands:
+
+```bash
+sudo cp deploy/market-scanner.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable market-scanner
+sudo systemctl start market-scanner
+sudo systemctl status market-scanner
+journalctl -u market-scanner -f
+```
+
+The service uses the project virtualenv Python at:
+
+```bash
+/home/scanner/TEst/market_scanner/.venv/bin/python
+```
+
+If you need different paths or environment values, edit the unit file before enabling it.
+
 ## Movement Signals
 
 The scanner now computes:
