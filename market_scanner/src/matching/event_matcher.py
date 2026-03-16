@@ -31,18 +31,33 @@ STOPWORDS = {
     "no",
 }
 
+GENERIC_ENTITY_TOKENS = {
+    "candidate",
+    "election",
+    "house",
+    "market",
+    "party",
+    "power",
+    "president",
+    "race",
+    "senate",
+    "state",
+    "team",
+}
+
 
 @dataclass(slots=True)
 class ParsedStructure:
     subject_phrase: str
     entity_tokens: set[str]
-    entity_head: str | None
+    entity_anchor: str | None
     thresholds: list[str]
     comparison_operator: str | None
     resolution_date: date | None
     category: str | None
     outcome_structure: str
     predicate_signature: str
+    semantic_key: str
 
 
 class EventMatcher:
@@ -98,11 +113,19 @@ class EventMatcher:
 
         if left_structure.outcome_structure != right_structure.outcome_structure:
             return 0.05
+
+        subject_similarity = SequenceMatcher(
+            None,
+            left_structure.subject_phrase,
+            right_structure.subject_phrase,
+        ).ratio()
         if (
-            left_structure.subject_phrase
-            and right_structure.subject_phrase
-            and SequenceMatcher(None, left_structure.subject_phrase, right_structure.subject_phrase).ratio() < 0.55
+            ":" in market.event_title
+            and ":" in reference_market.event_title
+            and left_structure.subject_phrase != right_structure.subject_phrase
         ):
+            return 0.05
+        if left_structure.subject_phrase and right_structure.subject_phrase and subject_similarity < 0.72:
             return 0.05
 
         normalized_text_score = SequenceMatcher(
@@ -129,12 +152,18 @@ class EventMatcher:
         if threshold_score < 0.2 or date_score < 0.2:
             return 0.05
         if (
-            left_structure.entity_head
-            and right_structure.entity_head
-            and left_structure.entity_head != right_structure.entity_head
+            left_structure.entity_anchor
+            and right_structure.entity_anchor
+            and left_structure.entity_anchor != right_structure.entity_anchor
         ):
             return 0.05
-        if left_structure.entity_tokens and right_structure.entity_tokens and entity_score < 0.34:
+        if left_structure.entity_tokens and right_structure.entity_tokens and entity_score < 0.66:
+            return 0.05
+        if (
+            left_structure.semantic_key
+            and right_structure.semantic_key
+            and left_structure.semantic_key != right_structure.semantic_key
+        ):
             return 0.05
         if predicate_score < 0.78:
             return 0.05
@@ -166,16 +195,12 @@ class EventMatcher:
 
     def platform_independent_event_key(self, market: Market) -> str:
         parsed = self._parse_structure(market)
-        title_tokens = [
-            token
-            for token in self._normalize_text(market.event_title).split()
-            if token not in STOPWORDS and len(token) > 2
-        ]
-        token_segment = "-".join(title_tokens[:6]) if title_tokens else "event"
+        subject_segment = self._slugify(parsed.subject_phrase) or "event"
+        predicate_segment = self._slugify(parsed.semantic_key) or "predicate"
         threshold_segment = "-".join(parsed.thresholds[:2]) or "no-threshold"
         date_segment = parsed.resolution_date.isoformat() if parsed.resolution_date else "no-date"
         category_segment = (parsed.category or "uncategorized").lower()
-        return f"{category_segment}-{token_segment}-{threshold_segment}-{date_segment}".strip("-")
+        return f"{category_segment}-{subject_segment}-{predicate_segment}-{threshold_segment}-{date_segment}".strip("-")
 
     def _combined_text(self, market: Market) -> str:
         parts = [market.event_title, market.description or "", market.resolution_criteria or ""]
@@ -188,40 +213,31 @@ class EventMatcher:
             for token in self._normalize_text(market.event_title).split()
             if token not in STOPWORDS and len(token) > 2
         ]
-        description_tokens = [
-            token
-            for token in self._normalize_text(market.description or "").split()
-            if token not in STOPWORDS and len(token) > 2
-        ]
         subject_phrase = self._extract_subject_phrase(market.event_title)
-        subject_tokens = {
-            token
-            for token in self._normalize_text(subject_phrase).split()
-            if token not in STOPWORDS and len(token) > 2
-        }
         subject_token_list = [
             token
             for token in self._normalize_text(subject_phrase).split()
-            if token not in STOPWORDS and len(token) > 2
+            if token not in STOPWORDS
         ]
         predicate_signature = self._predicate_signature(market.event_title, subject_phrase)
+        semantic_key = self._semantic_key(market.event_title, subject_phrase)
         outcome_labels = sorted({outcome.label.strip().upper() for outcome in market.outcomes})
 
         entity_tokens = set(subject_token_list)
-        entity_tokens.update(description_tokens[:3])
         if not entity_tokens:
             entity_tokens = set(title_tokens[:4])
 
         return ParsedStructure(
             subject_phrase=subject_phrase,
             entity_tokens=entity_tokens,
-            entity_head=subject_token_list[-1] if subject_token_list else (description_tokens[-1] if description_tokens else None),
+            entity_anchor=self._entity_anchor(subject_token_list),
             thresholds=self._extract_thresholds(combined_text),
             comparison_operator=self._extract_comparison_operator(combined_text),
             resolution_date=market.end_date.date() if market.end_date else None,
             category=market.category,
             outcome_structure="-".join(outcome_labels) if outcome_labels else "unknown",
             predicate_signature=predicate_signature,
+            semantic_key=semantic_key,
         )
 
     def _token_similarity(self, left_text: str, right_text: str) -> float:
@@ -369,14 +385,20 @@ class EventMatcher:
     @staticmethod
     def _normalize_text(value: str) -> str:
         lowered = value.lower().strip()
-        collapsed = re.sub(r"[^a-z0-9\s$%.]", " ", lowered)
+        normalized = lowered.replace(":", " : ")
+        collapsed = re.sub(r"[^a-z0-9\s:$%.]", " ", normalized)
         return re.sub(r"\s+", " ", collapsed).strip()
 
     @staticmethod
     def _extract_subject_phrase(title: str) -> str:
         normalized = EventMatcher._normalize_text(title)
+        if " : " in normalized:
+            _, _, candidate = normalized.partition(" : ")
+            candidate = candidate.strip()
+            if candidate and len(candidate.split()) <= 8:
+                return candidate
         match = re.match(
-            r"will\s+(?P<subject>.+?)\s+(win|be|have|visit|qualify|reach|exceed|close|sentenced|score|finish)\b",
+            r"will\s+(?P<subject>.+?)\s+(win|be|have|visit|qualify|reach|exceed|close|sentenced|score|finish|control|hold|capture|gain|lose)\b",
             normalized,
         )
         if match:
@@ -390,6 +412,29 @@ class EventMatcher:
             normalized = normalized.replace(subject_phrase, "<subject>", 1)
         normalized = re.sub(r"\$?\d+(?:\.\d+)?%?", "<num>", normalized)
         return normalized
+
+    @staticmethod
+    def _semantic_key(title: str, subject_phrase: str) -> str:
+        normalized = EventMatcher._predicate_signature(title, subject_phrase)
+        tokens = [
+            token
+            for token in normalized.split()
+            if token not in STOPWORDS and token not in {"<subject>", "<num>", ":"} and len(token) > 1
+        ]
+        return " ".join(tokens[:6])
+
+    @staticmethod
+    def _entity_anchor(tokens: list[str]) -> str | None:
+        if not tokens:
+            return None
+        for token in reversed(tokens):
+            if token not in GENERIC_ENTITY_TOKENS:
+                return token
+        return tokens[-1]
+
+    @staticmethod
+    def _slugify(value: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
 
     @staticmethod
     def _to_timestamp(value: datetime) -> float:

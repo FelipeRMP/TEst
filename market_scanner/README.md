@@ -181,6 +181,43 @@ Stored fields include:
 
 This history powers movement and volatility analysis.
 
+## Canonical Runtime Storage
+
+Runtime analytics and monitoring now prefer:
+
+- `data/trading_data.db`
+
+This SQLite database is the canonical source of truth for:
+
+- signal rows
+- raw price snapshots
+- scan batches
+- simulated trades
+- generated research labels
+
+CSV files in `data/` are still written as fallback/debug artifacts, but monitoring and research scripts prefer SQLite first.
+
+## Scan Batches
+
+Every scan now gets a real `scan_id`.
+
+That batch ID is attached to:
+
+- price snapshots written during the scan
+- signals emitted during the scan
+- scan batch metadata in the `scan_batches` table
+
+Each batch records:
+
+- scan start time
+- scan finish time
+- scan duration
+- market count
+- price snapshot count
+- detected opportunity count
+- emitted signal count
+- status / error message
+
 ## Signal Logging
 
 Every finalized opportunity returned by the backend is now logged for later analysis.
@@ -192,7 +229,12 @@ Files written:
 
 Logged fields include:
 
+- signal_id
+- scan_id
+- scan_timestamp
 - timestamp
+- signal_family
+- opportunity_type
 - event_id
 - event_title
 - platform
@@ -214,6 +256,8 @@ Logged fields include:
 
 Logging is best-effort and will never stop the scanner if the file or database write fails.
 
+Near-identical signals are also deduplicated before they are logged. A repeated signal family is only re-emitted quickly if market price, consensus, EV, or signal strength changed materially.
+
 ## Market Price Logging
 
 Each scan also records fetched market prices for paper-trading analysis.
@@ -225,6 +269,8 @@ Files written:
 
 Each row includes:
 
+- scan_id
+- scan_timestamp
 - timestamp
 - platform
 - market_id
@@ -244,8 +290,8 @@ python backend/simulate_trades.py
 
 It loads:
 
-- `data/signal_log.csv`
-- `data/price_history.csv`
+- `data/trading_data.db` first
+- `data/signal_log.csv` / `data/price_history.csv` only as fallback
 
 Default paper-trading rules:
 
@@ -271,6 +317,32 @@ Reported metrics:
 - average liquidity at entry
 
 Simulated trades are also written to `data/trading_data.db` in the `simulated_trades` table.
+
+Each simulator execution now gets its own `run_id`, so a fresh run can be identified cleanly without silently mixing results.
+
+## Label Generation
+
+To create research-ready labels from the collected SQLite history:
+
+```bash
+python backend/generate_labels.py
+```
+
+This generates or refreshes `signal_labels` in `data/trading_data.db` using canonical normalized market IDs.
+
+Current labels:
+
+- `future_return_5m`
+- `future_return_1h`
+- `future_return_24h`
+- `hit_consensus_within_24h`
+
+Label definitions:
+
+- `future_return_*` = future market price minus the logged entry price at the first snapshot on or after the horizon
+- `hit_consensus_within_24h` = whether the logged market price reached or exceeded the logged consensus probability within 24 hours
+
+The script is safe to rerun because it upserts labels by `signal_id`.
 
 ## Continuous Data Collection Worker
 

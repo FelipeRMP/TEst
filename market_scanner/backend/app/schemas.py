@@ -86,9 +86,19 @@ class OpportunitiesResponse(BaseModel):
 
 
 class RecentScanActivityResponse(BaseModel):
+    scan_id: str
     timestamp: datetime
     signal_count: int
     price_snapshot_count: int
+    status: str = "unknown"
+    duration_seconds: float = 0.0
+
+
+class RepeatedSignalFamilyResponse(BaseModel):
+    signal_family: str
+    event_title: str
+    count: int
+    last_seen: datetime | None = None
 
 
 class CollectionStatsResponse(BaseModel):
@@ -97,6 +107,12 @@ class CollectionStatsResponse(BaseModel):
     latest_signal_timestamp: datetime | None = None
     latest_price_timestamp: datetime | None = None
     latest_scan_timestamp: datetime | None = None
+    total_scan_batches: int = 0
+    latest_scan_batch_timestamp: datetime | None = None
+    latest_scan_duration_seconds: float = 0.0
+    unique_markets_scanned: int = 0
+    unique_events_signaled: int = 0
+    malformed_id_count: int = 0
     simulator_trade_count: int
     simulator_total_pnl: float
     simulated_realized_pnl: float
@@ -109,3 +125,4 @@ class CollectionStatsResponse(BaseModel):
     data_freshness_status: str
     win_rate: float | None = None
     recent_scan_activity: list[RecentScanActivityResponse]
+    top_repeated_signal_families: list[RepeatedSignalFamilyResponse] = Field(default_factory=list)

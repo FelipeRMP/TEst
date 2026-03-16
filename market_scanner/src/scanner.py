@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from uuid import uuid4
 
 from backend.utils.price_logger import log_market_price
 from src.analysis.arbitrage_detector import OpportunityDetector
@@ -17,18 +19,27 @@ from src.storage.price_history_store import price_history_store
 
 @dataclass(slots=True)
 class ScanSnapshot:
+    scan_id: str
+    scan_started_at: datetime
+    scan_finished_at: datetime
+    scan_duration_seconds: float
     markets: list[Market]
     events: list[Event]
     consensus_map: dict[str, ConsensusResult]
     opportunities: list[Opportunity]
     movement_map: dict[tuple[str, str, str], MovementMetrics]
+    price_snapshot_count: int
 
 
 async def scan_markets(
     limit: int = settings.default_market_limit,
     min_liquidity: float = settings.min_liquidity,
     min_ev: float = settings.min_expected_value,
+    scan_id: str | None = None,
+    scan_started_at: datetime | None = None,
 ) -> ScanSnapshot:
+    started_at = scan_started_at or datetime.now(timezone.utc)
+    active_scan_id = scan_id or f"scan-{uuid4().hex}"
     async with PolymarketClient() as polymarket_client, KalshiClient() as kalshi_client:
         results = await asyncio.gather(
             polymarket_client.fetch_active_markets(limit=limit),
@@ -47,25 +58,38 @@ async def scan_markets(
         for market in (_sanitize_market(market) for market in markets)
         if market is not None and market.status == "open" and market.liquidity >= min_liquidity and market.outcomes
     ]
-    await asyncio.gather(*(log_market_price(market) for market in filtered_markets), return_exceptions=True)
+    await asyncio.gather(
+        *(
+            log_market_price(market, scan_id=active_scan_id, scan_timestamp=started_at)
+            for market in filtered_markets
+        ),
+        return_exceptions=True,
+    )
+    price_snapshot_count = sum(len(market.outcomes) for market in filtered_markets)
 
     matcher = EventMatcher()
     events = matcher.group_markets(filtered_markets)
     consensus_model = ConsensusModel()
     consensus_map = consensus_model.compute(events)
-    await price_history_store.record_event_prices(events)
+    await price_history_store.record_event_prices(events, timestamp=started_at, scan_id=active_scan_id)
     movement_detector = MovementDetector()
     movement_map = await movement_detector.analyze(events)
 
     detector = OpportunityDetector(min_ev=min_ev)
     opportunities = detector.find(events, consensus_map)
+    finished_at = datetime.now(timezone.utc)
 
     return ScanSnapshot(
+        scan_id=active_scan_id,
+        scan_started_at=started_at,
+        scan_finished_at=finished_at,
+        scan_duration_seconds=round((finished_at - started_at).total_seconds(), 4),
         markets=filtered_markets,
         events=events,
         consensus_map=consensus_map,
         opportunities=opportunities,
         movement_map=movement_map,
+        price_snapshot_count=price_snapshot_count,
     )
 
 

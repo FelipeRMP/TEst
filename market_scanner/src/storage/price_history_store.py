@@ -14,6 +14,7 @@ from src.models import Event
 @dataclass(slots=True)
 class PriceHistoryPoint:
     timestamp: datetime
+    scan_id: str
     platform: str
     event_id: str
     market_id: str
@@ -36,10 +37,15 @@ class PriceHistoryStore:
         await asyncio.to_thread(self._initialize_db)
         self._initialized = True
 
-    async def record_event_prices(self, events: list[Event], timestamp: datetime | None = None) -> None:
+    async def record_event_prices(
+        self,
+        events: list[Event],
+        timestamp: datetime | None = None,
+        scan_id: str = "",
+    ) -> None:
         await self.ensure_initialized()
         captured_at = timestamp or datetime.now(timezone.utc)
-        rows: list[tuple[str, str, str, str, str, float, float]] = []
+        rows: list[tuple[str, str, str, str, str, str, float, float]] = []
 
         for event in events:
             for market in event.markets:
@@ -48,6 +54,7 @@ class PriceHistoryStore:
                         continue
                     point = PriceHistoryPoint(
                         timestamp=captured_at,
+                        scan_id=scan_id,
                         platform=market.platform,
                         event_id=event.event_id,
                         market_id=market.market_id,
@@ -59,6 +66,7 @@ class PriceHistoryStore:
                     rows.append(
                         (
                             point.timestamp.isoformat(),
+                            point.scan_id,
                             point.platform,
                             point.event_id,
                             point.market_id,
@@ -84,12 +92,13 @@ class PriceHistoryStore:
         for row in db_rows:
             point = PriceHistoryPoint(
                 timestamp=datetime.fromisoformat(row[0]),
-                platform=row[1],
-                event_id=row[2],
-                market_id=row[3],
-                outcome=row[4],
-                probability=float(row[5]),
-                liquidity=float(row[6]),
+                scan_id=row[1],
+                platform=row[2],
+                event_id=row[3],
+                market_id=row[4],
+                outcome=row[5],
+                probability=float(row[6]),
+                liquidity=float(row[7]),
             )
             history_map[(point.platform, point.market_id, point.outcome)].append(point)
 
@@ -121,6 +130,7 @@ class PriceHistoryStore:
                 """
                 CREATE TABLE IF NOT EXISTS price_history(
                     timestamp TEXT NOT NULL,
+                    scan_id TEXT,
                     platform TEXT NOT NULL,
                     event_id TEXT NOT NULL,
                     market_id TEXT NOT NULL,
@@ -137,13 +147,20 @@ class PriceHistoryStore:
                 """
             )
             connection.commit()
+            existing_columns = {
+                row[1]
+                for row in connection.execute("PRAGMA table_info(price_history)").fetchall()
+            }
+            if "scan_id" not in existing_columns:
+                connection.execute("ALTER TABLE price_history ADD COLUMN scan_id TEXT")
+                connection.commit()
 
-    def _insert_rows(self, rows: list[tuple[str, str, str, str, str, float, float]]) -> None:
+    def _insert_rows(self, rows: list[tuple[str, str, str, str, str, str, float, float]]) -> None:
         with sqlite3.connect(self.db_path) as connection:
             connection.executemany(
                 """
-                INSERT INTO price_history(timestamp, platform, event_id, market_id, outcome, probability, liquidity)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO price_history(timestamp, scan_id, platform, event_id, market_id, outcome, probability, liquidity)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 rows,
             )
@@ -153,7 +170,7 @@ class PriceHistoryStore:
         self,
         market_keys: list[tuple[str, str, str]],
         since_iso: str,
-    ) -> list[tuple[str, str, str, str, str, float, float]]:
+    ) -> list[tuple[str, str, str, str, str, str, float, float]]:
         if not market_keys:
             return []
 
@@ -163,7 +180,7 @@ class PriceHistoryStore:
             params.extend([platform, market_id, outcome])
 
         query = f"""
-            SELECT timestamp, platform, event_id, market_id, outcome, probability, liquidity
+            SELECT timestamp, COALESCE(scan_id, ''), platform, event_id, market_id, outcome, probability, liquidity
             FROM price_history
             WHERE timestamp >= ?
               AND ({clauses})

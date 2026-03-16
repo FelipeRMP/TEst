@@ -72,9 +72,19 @@ export type OpportunitiesResponse = {
 };
 
 export type RecentScanActivity = {
+  scan_id: string;
   timestamp: string;
   signal_count: number;
   price_snapshot_count: number;
+  status: string;
+  duration_seconds: number;
+};
+
+export type RepeatedSignalFamily = {
+  signal_family: string;
+  event_title: string;
+  count: number;
+  last_seen: string | null;
 };
 
 export type CollectionStats = {
@@ -83,6 +93,12 @@ export type CollectionStats = {
   latest_signal_timestamp: string | null;
   latest_price_timestamp: string | null;
   latest_scan_timestamp: string | null;
+  total_scan_batches: number;
+  latest_scan_batch_timestamp: string | null;
+  latest_scan_duration_seconds: number;
+  unique_markets_scanned: number;
+  unique_events_signaled: number;
+  malformed_id_count: number;
   simulator_trade_count: number;
   simulator_total_pnl: number;
   simulated_realized_pnl: number;
@@ -95,6 +111,7 @@ export type CollectionStats = {
   data_freshness_status: string;
   win_rate: number | null;
   recent_scan_activity: RecentScanActivity[];
+  top_repeated_signal_families: RepeatedSignalFamily[];
 };
 
 export type ScanResponse = {

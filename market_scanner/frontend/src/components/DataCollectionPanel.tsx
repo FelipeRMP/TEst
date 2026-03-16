@@ -63,6 +63,11 @@ export function DataCollectionPanel({ stats, loading, error }: DataCollectionPan
     <div className="collection-layout">
       <section className="metrics-row">
         <div className="metric-card">
+          <span className="metric-label">Scan Batches</span>
+          <strong className="metric-value">{stats.total_scan_batches}</strong>
+          <span className="metric-helper">Completed scan runs recorded in SQLite</span>
+        </div>
+        <div className="metric-card">
           <span className="metric-label">Signals Logged</span>
           <strong className="metric-value">{stats.total_signals_logged}</strong>
           <span className="metric-helper">Total trading ideas recorded to the experiment log</span>
@@ -104,6 +109,21 @@ export function DataCollectionPanel({ stats, loading, error }: DataCollectionPan
           <strong className="metric-value">{stats.recent_signal_count_24h}</strong>
           <span className="metric-helper">Recent signal activity for monitoring collection health</span>
         </div>
+        <div className="metric-card">
+          <span className="metric-label">Unique Markets</span>
+          <strong className="metric-value">{stats.unique_markets_scanned}</strong>
+          <span className="metric-helper">Distinct canonical market IDs seen in stored snapshots</span>
+        </div>
+        <div className="metric-card">
+          <span className="metric-label">Unique Events</span>
+          <strong className="metric-value">{stats.unique_events_signaled}</strong>
+          <span className="metric-helper">Distinct event IDs represented in logged signals</span>
+        </div>
+        <div className="metric-card">
+          <span className="metric-label">Malformed IDs</span>
+          <strong className="metric-value">{stats.malformed_id_count}</strong>
+          <span className="metric-helper">Signals with duplicated YES/NO suffixes still present in storage</span>
+        </div>
       </section>
 
       <section className="panel collection-summary-panel">
@@ -121,6 +141,10 @@ export function DataCollectionPanel({ stats, loading, error }: DataCollectionPan
           <div className="detail-block">
             <span>Last Observed Scan</span>
             <strong>{formatDateTime(stats.latest_scan_timestamp)}</strong>
+          </div>
+          <div className="detail-block">
+            <span>Latest Scan Duration</span>
+            <strong>{stats.latest_scan_duration_seconds.toFixed(1)}s</strong>
           </div>
           <div className="detail-block">
             <span>Latest Price Time</span>
@@ -151,10 +175,33 @@ export function DataCollectionPanel({ stats, loading, error }: DataCollectionPan
             <p>No recent activity yet.</p>
           ) : (
             stats.recent_scan_activity.map((activity) => (
-              <div key={activity.timestamp} className="activity-row">
+              <div key={activity.scan_id} className="activity-row">
                 <strong>{new Date(activity.timestamp).toLocaleString()}</strong>
                 <span>{activity.signal_count} signals</span>
                 <span>{activity.price_snapshot_count} price snapshots</span>
+                <span>{activity.status}</span>
+              </div>
+            ))
+          )}
+        </div>
+      </section>
+
+      <section className="panel collection-summary-panel">
+        <div className="panel-heading">
+          <div>
+            <h3>Top Repeated Signal Families</h3>
+            <p>Useful for spotting over-represented ideas in the collected dataset.</p>
+          </div>
+        </div>
+        <div className="activity-list">
+          {stats.top_repeated_signal_families.length === 0 ? (
+            <p>No repeated signal families yet.</p>
+          ) : (
+            stats.top_repeated_signal_families.map((family) => (
+              <div key={family.signal_family} className="activity-row">
+                <strong>{family.event_title || family.signal_family}</strong>
+                <span>{family.count} logged signals</span>
+                <span>Last seen {formatDateTime(family.last_seen)}</span>
               </div>
             ))
           )}

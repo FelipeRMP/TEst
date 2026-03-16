@@ -6,12 +6,14 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
+
 from src.analysis.bankroll_allocator import BankrollAllocator
 from src.models import Market, Opportunity
 from src.scanner import ScanSnapshot, scan_markets
 
 from ..schemas import OpportunityLegResponse, OpportunityResponse, ScanRequest
 from ...utils.signal_logger import log_signal
+from ...utils.scan_batches import record_scan_batch_finished, record_scan_batch_started
 
 
 @dataclass(slots=True)
@@ -27,27 +29,71 @@ class ScannerService:
         self._bankroll_allocator = BankrollAllocator()
 
     async def run_scan(self, params: ScanRequest) -> CachedScan:
-        snapshot = await scan_markets(
+        started_at = datetime.now(timezone.utc)
+        scan_id = started_at.strftime("scan-%Y%m%dT%H%M%S-%f")
+        await record_scan_batch_started(
+            scan_id=scan_id,
+            started_at=started_at,
             limit=params.limit,
             min_liquidity=params.min_liquidity,
             min_ev=params.min_ev,
+            bankroll_amount=params.bankroll_amount,
         )
-        cached = CachedScan(
-            params=params,
-            scanned_at=datetime.now(timezone.utc),
-            opportunities=self._build_responses(snapshot, params.bankroll_amount),
-        )
-        await self._log_signals(cached.opportunities)
-        self._cache = cached
-        return cached
+        try:
+            snapshot = await scan_markets(
+                limit=params.limit,
+                min_liquidity=params.min_liquidity,
+                min_ev=params.min_ev,
+                scan_id=scan_id,
+                scan_started_at=started_at,
+            )
+            cached = CachedScan(
+                params=params,
+                scanned_at=snapshot.scan_finished_at,
+                opportunities=self._build_responses(snapshot, params.bankroll_amount),
+            )
+            emitted_signal_count = await self._log_signals(
+                cached.opportunities,
+                scan_id=scan_id,
+                scan_timestamp=snapshot.scan_started_at,
+            )
+            await record_scan_batch_finished(
+                scan_id=scan_id,
+                finished_at=snapshot.scan_finished_at,
+                status="completed",
+                market_count=len(snapshot.markets),
+                price_snapshot_count=snapshot.price_snapshot_count,
+                detected_opportunity_count=len(cached.opportunities),
+                emitted_signal_count=emitted_signal_count,
+            )
+            self._cache = cached
+            return cached
+        except Exception as exc:
+            await record_scan_batch_finished(
+                scan_id=scan_id,
+                finished_at=datetime.now(timezone.utc),
+                status="failed",
+                error_message=str(exc),
+            )
+            raise
 
     def get_cached(self) -> CachedScan | None:
         return self._cache
 
-    async def _log_signals(self, opportunities: list[OpportunityResponse]) -> None:
+    async def _log_signals(
+        self,
+        opportunities: list[OpportunityResponse],
+        *,
+        scan_id: str,
+        scan_timestamp: datetime,
+    ) -> int:
         if not opportunities:
-            return
-        await asyncio.gather(*(log_signal(opportunity) for opportunity in opportunities), return_exceptions=True)
+            return 0
+        results = await asyncio.gather(
+            *(log_signal(opportunity, scan_id=scan_id, scan_timestamp=scan_timestamp) for opportunity in opportunities),
+            return_exceptions=True,
+        )
+        return sum(1 for result in results if result is True)
 
     def _build_responses(self, snapshot: ScanSnapshot, bankroll_amount: float) -> list[OpportunityResponse]:
         market_index: dict[tuple[str, str], Market] = {
